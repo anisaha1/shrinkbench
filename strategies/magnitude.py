@@ -18,7 +18,8 @@ from .utils import (fraction_threshold,
                     map_importances,
                     flatten_importances,
                     importance_masks,
-                    activation_importance)
+                    activation_importance,
+                    gaussian_clipping)
 
 
 class GlobalMagWeight(VisionPruning):
@@ -61,9 +62,18 @@ class LayerMagGrad(GradientMixin, LayerPruning, VisionPruning):
     def layer_masks(self, module):
         params = self.module_params(module)
         grads = self.module_param_gradients(module)
-        importances = {param: np.abs(value*grads[param]) for param, value in params.items()}
-        masks = {param: fraction_mask(importances[param], self.fraction)
+        # importances = {param: np.abs(value*grads[param]) for param, value in params.items()}
+        importances = {param: value*grads[param] for param, value in params.items()}                # Do not use abs value. Aniruddha
+
+        # If override fraction # ANIRUDDHA
+        if self.override_fraction:
+            # Use Gaussian distribution fit
+            # fraction = gaussian_clipping(importances)
+            masks = {param: fraction_mask(importances[param], gaussian_clipping(importances[param]))
                  for param, value in params.items() if value is not None}
+        else:
+            masks = {param: fraction_mask(importances[param], self.fraction)
+                for param, value in params.items() if value is not None}
         return masks
 
 

@@ -4,6 +4,7 @@
 from collections import OrderedDict, defaultdict
 
 import torch
+import pickle
 from torch import nn
 
 
@@ -103,7 +104,6 @@ def get_gradients(model, inputs, outputs):
     # That'll also help figuring out how to compute a module graph
     pass
 
-
 def get_param_gradients(model, inputs, outputs, loss_func=None, by_module=True):
 
     gradients = OrderedDict()
@@ -137,12 +137,53 @@ def get_param_gradients(model, inputs, outputs, loss_func=None, by_module=True):
 
     return gradients
 
+def get_param_gradients_ULPs(model, inputs, outputs, ULP_data, loss_func=None, by_module=True):
+
+    gradients = OrderedDict()
+
+    if loss_func is None:
+        loss_func = nn.CrossEntropyLoss()
+
+    # ANIRUDDHA Use ULPs to calculate gradients
+    # training = model.training
+    model.eval()
+    inputs = inputs.cpu()
+    pred = model(inputs)
+    W = ULP_data[1].cpu()
+    b = ULP_data[2].cpu()
+    avgpool = torch.nn.AdaptiveAvgPool1d(200)
+    output = avgpool(pred.view(1,1,-1)).squeeze(0)
+    logit = torch.matmul(output, W) + b
+    loss = logit[0, 1] - logit [0, 0]
+    # loss = loss_func(pred, outputs)
+    loss.backward()
+
+    if by_module:
+        gradients = defaultdict(OrderedDict)
+        for module in model.modules():
+            assert module not in gradients
+            for name, param in module.named_parameters(recurse=False):
+                if param.requires_grad and param.grad is not None:
+                    gradients[module][name] = param.grad.detach().cpu().numpy().copy()
+
+    else:
+        gradients = OrderedDict()
+        for name, param in model.named_parameters():
+            assert name not in gradients
+            if param.requires_grad and param.grad is not None:
+                gradients[name] = param.grad.detach().cpu().numpy().copy()
+
+    model.zero_grad()
+    model.train()
+
+    return gradients
+
 
 def fraction_to_keep(compression, model, prunable_modules):
     """ Return fraction of params to keep to achieve desired compression ratio
 
     Compression = total / ( fraction * prunable + (total-prunable))
-    Using algrebra fraction is equal to
+    Using algebra fraction is equal to
     fraction = total/prunable * (1/compression - 1) + 1
 
     Arguments:

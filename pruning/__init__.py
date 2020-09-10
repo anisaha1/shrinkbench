@@ -7,5 +7,6 @@ from .utils import (get_params,
                     get_activations,
                     get_gradients,
                     get_param_gradients,
+                    get_param_gradients_ULPs,
                     fraction_to_keep,
                     )

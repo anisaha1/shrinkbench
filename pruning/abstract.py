@@ -14,7 +14,7 @@ class Pruning(ABC):
     """Base class for Pruning operations
     """
 
-    def __init__(self, model, inputs=None, outputs=None, **pruning_params):
+    def __init__(self, model, inputs=None, outputs=None, module_list=[], **pruning_params):
         """Construct Pruning class
 
         Passed params are set as attributes for convienence and
@@ -30,6 +30,7 @@ class Pruning(ABC):
         self.model = model
         self.inputs = inputs
         self.outputs = outputs
+        self.module_list = module_list
         self.pruning_params = list(pruning_params.keys())
         for k, v in pruning_params.items():
             setattr(self, k, v)
@@ -53,7 +54,7 @@ class Pruning(ABC):
         pass
 
     def prunable_modules(self):
-        prunable = [module for module in self.model.modules() if self.can_prune(module)]
+        prunable = [module for (name, module) in self.model.named_modules() if self.can_prune(name, module)]
         return prunable
 
     def __repr__(self):
@@ -81,11 +82,14 @@ class Pruning(ABC):
             for pname, param in module.named_parameters(recurse=False):
                 if isinstance(module, MaskedModule):
                     compression = 1/getattr(module, pname+'_mask').detach().cpu().numpy().mean()
+                    # ANIRUDDHA ad fraction_keep to csv
+                    fraction_keep = getattr(module, pname+'_mask').detach().cpu().numpy().mean()
                 else:
                     compression = 1
+                    fraction_keep = 1
                 shape = param.detach().cpu().numpy().shape
-                rows.append([name, pname, compression, np.prod(shape), shape, self.can_prune(module)])
-        columns = ['module', 'param', 'comp', 'size', 'shape', 'prunable']
+                rows.append([name, pname, compression, fraction_keep, np.prod(shape), shape, self.can_prune(name, module)])
+        columns = ['module', 'param', 'comp', 'fraction_keep', 'size', 'shape', 'prunable']
         return pd.DataFrame(rows, columns=columns)
 
 

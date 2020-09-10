@@ -8,6 +8,7 @@ import shutil
 import signal
 import string
 import sys
+import os
 
 import numpy as np
 import torch
@@ -54,7 +55,7 @@ class Experiment(ABC):
         if hasattr(self, "rootdir"):
             parent = pathlib.Path(self.rootdir)
         else:
-            parent = pathlib.Path('results')
+            parent = pathlib.Path('results/{}'.format(self.params['dataset']))
         if self._params.get('debug', False):
             parent /= 'tmp'
         parent.mkdir(parents=True, exist_ok=True)
@@ -94,10 +95,16 @@ class Experiment(ABC):
         if hasattr(self, "uid"):
             return self.uid
 
-        N = 4  # length of nonce
-        time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        nonce = ''.join(random.choices(string.ascii_uppercase + string.digits, k=N))
-        self.uid = f"{time}-{nonce}-{self.digest}"
+        # N = 4  # length of nonce
+        # time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        # nonce = ''.join(random.choices(string.ascii_uppercase + string.digits, k=N))
+        # self.uid = f"{time}-{nonce}-{self.digest}"
+
+        # ANIRUDDHA uid
+        # dataset = self.params['dataset']
+        model = os.path.basename(self.params['resume'])
+        # compression = self.params['compression']
+        self.uid = f"{model}"
         return self.uid
 
     def build_logging(self, metrics, path=None, csv=True, tensorboard=False):

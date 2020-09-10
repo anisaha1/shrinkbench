@@ -3,14 +3,16 @@ import os
 
 from torchvision import transforms, datasets
 
-from . import places365
+from . import places365, tiny_imagenet
 
 _constructors = {
     'MNIST': datasets.MNIST,
     'CIFAR10': datasets.CIFAR10,
     'CIFAR100': datasets.CIFAR100,
     'ImageNet': datasets.ImageNet,
-    'Places365': places365.Places365
+    'Places365': places365.Places365,
+    'TinyImageNet': tiny_imagenet.TinyImageNet,
+    'customFolder': tiny_imagenet.customFolder
 }
 
 
@@ -18,7 +20,7 @@ def dataset_path(dataset, path=None):
     """Get the path to a specified dataset
 
     Arguments:
-        dataset {str} -- One of MNIST, CIFAR10, CIFAR100, ImageNet, Places365
+        dataset {str} -- One of MNIST, CIFAR10, CIFAR100, ImageNet, Places365, TinyImageNet
 
     Keyword Arguments:
         path {str} -- Semicolon separated list of paths to look for dataset folders (default: {None})
@@ -50,11 +52,11 @@ def dataset_path(dataset, path=None):
         raise LookupError(f"Could not find {dataset} in {paths}")
 
 
-def dataset_builder(dataset, train=True, normalize=None, preproc=None, path=None):
+def dataset_builder(dataset, train=True, normalize=None, preproc=None, path=None, target=None):
     """Build a torch.utils.Dataset with proper preprocessing
 
     Arguments:
-        dataset {str} -- One of MNIST, CIFAR10, CIFAR100, ImageNet, Places365
+        dataset {str} -- One of MNIST, CIFAR10, CIFAR100, ImageNet, Places365, TinyImageNet or some customFolders
 
     Keyword Arguments:
         train {bool} -- Whether to return train or validation set (default: {True})
@@ -79,7 +81,10 @@ def dataset_builder(dataset, train=True, normalize=None, preproc=None, path=None
 
     path = dataset_path(dataset, path)
 
-    return _constructors[dataset](path, **kwargs)
+    if dataset not in ['MNIST', 'CIFAR10', 'CIFAR100', 'ImageNet', 'Places365', 'TinyImageNet']:
+        return _constructors['customFolder'](path, target, **kwargs)
+    else:
+        return _constructors[dataset](path, **kwargs)
 
 
 def MNIST(train=True, path=None):
@@ -156,4 +161,36 @@ def Places365(train=True, path=None):
         preproc = [transforms.Resize(256), transforms.CenterCrop(224)]
     dataset = dataset_builder('Places365', train, normalize, preproc, path)
     dataset.shape = (3, 224, 224)
+    return dataset
+
+def TinyImageNet(train=True, path=None):
+    """Thin wrapper around .datasets.tiny_imagenet.TinyImageNet
+    """
+
+    mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+
+    normalize = transforms.Normalize(mean=mean, std=std)
+    if train:
+        preproc = [transforms.RandomCrop(56),
+		           transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]
+    else:
+        preproc = [transforms.CenterCrop(56)]
+    dataset = dataset_builder('TinyImageNet', train, normalize, preproc, path)
+    dataset.shape = (3, 56, 56)
+    return dataset
+
+def customFolder(train=False, path=None, dataset='', target=None):
+    """Thin wrapper around .datasets.tiny_imagenet.customFolder
+    """
+
+    mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+
+    normalize = transforms.Normalize(mean=mean, std=std)
+    if train:
+        preproc = [transforms.RandomCrop(56),
+		           transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]
+    else:
+        preproc = [transforms.CenterCrop(56)]
+    dataset = dataset_builder(dataset, train, normalize, preproc, path, target)
+    dataset.shape = (3, 56, 56)
     return dataset

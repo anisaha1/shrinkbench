@@ -6,6 +6,7 @@ rest of the framework pipeline
 """
 
 import numpy as np
+from scipy.stats import norm
 
 
 def fraction_threshold(tensor, fraction):
@@ -25,7 +26,8 @@ def fraction_threshold(tensor, fraction):
         float -- Threshold
     """
     assert isinstance(tensor, np.ndarray)
-    threshold = np.quantile(tensor, 1-fraction)
+    # threshold = np.quantile(tensor, 1-fraction)
+    threshold = np.quantile(tensor, fraction)           # ANIRUDDHA - backdoor remove top 1-fraction importance scores.
     return threshold
 
 
@@ -42,7 +44,8 @@ def threshold_mask(tensor, threshold):
         np.ndarray -- Binary mask
     """
     assert isinstance(tensor, np.ndarray)
-    idx = np.logical_and(tensor < threshold, tensor > -threshold)
+    # idx = np.logical_and(tensor < threshold, tensor > -threshold)
+    idx = np.where(tensor > threshold)              # ANIRUDDHA - where importance scores > threshold.
     mask = np.ones_like(tensor)
     mask[idx] = 0
     return mask
@@ -109,6 +112,14 @@ def activation_importance(weight, activation, norm=1):
         # for bias
         return weight * norms.mean()
 
+
+def gaussian_clipping(importances):
+    mean, std = norm.fit(importances)
+    fraction = (importances < (mean + std)).sum()/importances.size                  # fraction to keep
+    assert 0 < fraction <= 1, \
+        f"Fraction override: Cannot compress to fraction {fraction}"
+
+    return fraction
 
 # def largest_norm_channel_mask(tensor, fraction, ord=1, matrix_mode=False):
 #     # Assume channels is first axis, true for conv & linear

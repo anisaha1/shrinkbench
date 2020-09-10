@@ -7,18 +7,32 @@ from .modules import MaskedModule
 
 class VisionPruning(Pruning):
 
-    def __init__(self, model, inputs=None, outputs=None, compression=1):
-        super().__init__(model, inputs, outputs, compression=compression)
+    def __init__(self, model, inputs=None, outputs=None, compression=1, module_list=[], override_fraction=False, ULP_data=None):
+        super().__init__(model, inputs, outputs, module_list=module_list, compression=compression)
         self.prunable = self.prunable_modules()
         self.fraction = fraction_to_keep(self.compression, self.model, self.prunable)
+        self.override_fraction = override_fraction
+        self.ULP_data = ULP_data
 
-    def can_prune(self, module):
+    def can_prune(self, name, module):
 
-        if hasattr(module, 'is_classifier'):
-            return not module.is_classifier
-        if isinstance(module, (MaskedModule, nn.Linear, nn.Conv2d)):
-            return True
-        return False
+        if not self.module_list:                    # If list of prunable modules not passed
+            if hasattr(module, 'is_classifier'):
+                return not module.is_classifier
+            if isinstance(module, (MaskedModule, nn.Linear, nn.Conv2d)):
+                return True
+            return False
+        else:                                       # If user passes list of prunable modules
+            if hasattr(module, 'is_classifier'):
+                return not module.is_classifier
+            if name in self.module_list:
+                return True
+            return False      
+        # if hasattr(module, 'is_classifier'):
+        #     return not module.is_classifier
+        # if isinstance(module, (MaskedModule, nn.Linear, nn.Conv2d)):
+        #     return True
+        # return False      
 
     def prunable_modules(self):
         if not any([getattr(module, 'is_classifier', False) for module in self.model.modules()]):

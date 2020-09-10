@@ -39,7 +39,11 @@ class TrainingExperiment(Experiment):
                  pretrained=False,
                  resume=None,
                  resume_optim=False,
-                 save_freq=10):
+                 save_freq=10,
+                 source=None,
+                 target=None,
+                 poisoned_root=None
+                 ):
 
         # Default children kwargs
         super(TrainingExperiment, self).__init__(seed)
@@ -51,6 +55,9 @@ class TrainingExperiment(Experiment):
         params['train_kwargs'] = train_kwargs
         self.add_params(**params)
         # Save params
+        self.source = source
+        self.target = target
+        self.poisoned_root = poisoned_root
 
         self.build_dataloader(dataset, **dl_kwargs)
 
@@ -60,7 +67,7 @@ class TrainingExperiment(Experiment):
 
         self.path = path
         self.save_freq = save_freq
-
+        
     def run(self):
         self.freeze()
         printc(f"Running {repr(self)}", color='YELLOW')
@@ -72,8 +79,13 @@ class TrainingExperiment(Experiment):
         constructor = getattr(datasets, dataset)
         self.train_dataset = constructor(train=True)
         self.val_dataset = constructor(train=False)
+        constructor = getattr(datasets, 'customFolder')
+        self.poisoned_dataset = constructor(train=False, dataset=self.poisoned_root, target=self.target)
+        self.backdoor_dataset = constructor(train=False, dataset=self.poisoned_root, target=self.source)
         self.train_dl = DataLoader(self.train_dataset, shuffle=True, **dl_kwargs)
         self.val_dl = DataLoader(self.val_dataset, shuffle=False, **dl_kwargs)
+        self.poisoned_dl = DataLoader(self.poisoned_dataset, shuffle=False, **dl_kwargs)
+        self.backdoor_dl = DataLoader(self.backdoor_dataset, shuffle=False, **dl_kwargs)
 
     def build_model(self, model, pretrained=True, resume=None):
         if isinstance(model, str):
@@ -90,10 +102,10 @@ class TrainingExperiment(Experiment):
         self.model = model
 
         if resume is not None:
-            self.resume = pathlib.Path(self.resume)
+            self.resume = pathlib.Path(resume)
             assert self.resume.exists(), "Resume path does not exist"
             previous = torch.load(self.resume)
-            self.model.load_state_dict(previous['model_state_dict'])
+            self.model.load_state_dict(previous)                            # Aniruddha
 
     def build_train(self, optim, epochs, resume_optim=False, **optim_kwargs):
         default_optim_kwargs = {
@@ -145,6 +157,8 @@ class TrainingExperiment(Experiment):
                 printc(f"Start epoch {epoch}", color='YELLOW')
                 self.train(epoch)
                 self.eval(epoch)
+                self.eval_p(epoch)
+                self.eval_b(epoch)
                 # Checkpoint epochs
                 # TODO Model checkpointing based on best val loss/acc
                 if epoch % self.save_freq == 0:
@@ -201,15 +215,67 @@ class TrainingExperiment(Experiment):
 
         return total_loss.mean, acc1.mean, acc5.mean
 
+    def run_epoch_n(self, p, epoch=0):
+        if p:
+            self.model.eval()
+            prefix = 'ASR'
+            dl = self.poisoned_dl
+        else:
+            self.model.eval()
+            prefix = 'backdoor'
+            dl = self.backdoor_dl
+            
+
+        total_loss = OnlineStats()
+        acc1 = OnlineStats()
+        acc5 = OnlineStats()
+
+        epoch_iter = tqdm(dl)
+        epoch_iter.set_description(f"{prefix.capitalize()} Epoch {epoch}/{self.epochs}")
+
+        with torch.set_grad_enabled(False):
+            for i, (x, y) in enumerate(epoch_iter, start=1):
+                x, y = x.to(self.device), y.to(self.device)
+                yhat = self.model(x)
+                loss = self.loss_func(yhat, y)
+                if False:
+                    loss.backward()
+
+                    self.optim.step()
+                    self.optim.zero_grad()
+
+                c1, c5 = correct(yhat, y, (1, 5))
+                total_loss.add(loss.item() / dl.batch_size)
+                acc1.add(c1 / dl.batch_size)
+                acc5.add(c5 / dl.batch_size)
+
+                epoch_iter.set_postfix(loss=total_loss.mean, top1=acc1.mean, top5=acc5.mean)
+
+        self.log(**{
+            f'{prefix}_loss': total_loss.mean,
+            f'{prefix}_acc1': acc1.mean,
+            f'{prefix}_acc5': acc5.mean,
+        })
+
+        return total_loss.mean, acc1.mean, acc5.mean
+
     def train(self, epoch=0):
         return self.run_epoch(True, epoch)
 
     def eval(self, epoch=0):
         return self.run_epoch(False, epoch)
 
+    def eval_p(self, epoch=0):
+        return self.run_epoch_n(True, epoch)
+
+    def eval_b(self, epoch=0):
+        return self.run_epoch_n(False, epoch)
+
     @property
     def train_metrics(self):
         return ['epoch', 'timestamp',
                 'train_loss', 'train_acc1', 'train_acc5',
-                'val_loss', 'val_acc1', 'val_acc5',
+                'val_loss', 'val_acc1', 'val_acc5', 
+                'ASR_loss', 'ASR_acc1', 'ASR_acc5', 
+                'backdoor_loss', 'backdoor_acc1', 'backdoor_acc5'
                 ]

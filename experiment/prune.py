@@ -1,4 +1,6 @@
 import json
+import pickle
+import torch
 
 from .train import TrainingExperiment
 
@@ -22,20 +24,32 @@ class PruningExperiment(TrainingExperiment):
                  pretrained=True,
                  resume=None,
                  resume_optim=False,
-                 save_freq=10):
+                 save_freq=10,
+                 module_list=[],
+                 source=None,
+                 target=None,
+                 inputs=None,
+                 outputs=None,
+                 poisoned_root=None,
+                 override_fraction=False,
+                 ULP_data=None):
 
-        super(PruningExperiment, self).__init__(dataset, model, seed, path, dl_kwargs, train_kwargs, debug, pretrained, resume, resume_optim, save_freq)
+        super(PruningExperiment, self).__init__(dataset, model, seed, path, dl_kwargs, train_kwargs, debug, pretrained, resume, resume_optim, save_freq, source, target, poisoned_root)
         self.add_params(strategy=strategy, compression=compression)
 
-        self.apply_pruning(strategy, compression)
+        self.apply_pruning(strategy, compression, module_list, override_fraction, ULP_data)
 
         self.path = path
         self.save_freq = save_freq
 
-    def apply_pruning(self, strategy, compression):
+    def apply_pruning(self, strategy, compression, module_list, override_fraction, ULP_data):
         constructor = getattr(strategies, strategy)
-        x, y = next(iter(self.train_dl))
-        self.pruning = constructor(self.model, x, y, compression=compression)
+        # x, y = next(iter(self.train_dl))
+        # Pass ULPs and target all zeros (clean w.r.t ULPs)
+        x = ULP_data[0]
+        y = torch.LongTensor([0]*10)
+        # self.to_device()              # CALCULATE GRADIENTS on CPU?  ANIRUDDHA
+        self.pruning = constructor(self.model, x, y, compression=compression, module_list=module_list, override_fraction=override_fraction, ULP_data=ULP_data)
         self.pruning.apply()
         printc("Masked model", color='GREEN')
 
@@ -47,8 +61,8 @@ class PruningExperiment(TrainingExperiment):
 
         self.save_metrics()
 
-        if self.pruning.compression > 1:
-            self.run_epochs()
+        # if self.pruning.compression > 1:
+        self.run_epochs()                           # Finetune without compression. Aniruddha
 
     def save_metrics(self):
         self.metrics = self.pruning_metrics()
@@ -80,10 +94,26 @@ class PruningExperiment(TrainingExperiment):
 
         # Accuracy
         loss, acc1, acc5 = self.run_epoch(False, -1)
-        self.log_epoch(-1)
+        # self.log_epoch(-1)
 
         metrics['loss'] = loss
         metrics['val_acc1'] = acc1
         metrics['val_acc5'] = acc5
+
+        # ANIRUDDHA
+        loss, acc1, acc5 = self.run_epoch_n(True, -1)
+        # self.log_epoch(-1)
+
+        metrics['ASR_loss'] = loss
+        metrics['ASR_acc1'] = acc1
+        metrics['ASR_acc5'] = acc5
+
+        loss, acc1, acc5 = self.run_epoch_n(False, -1)
+        self.log_epoch(-1)
+
+        metrics['backdoor_loss'] = loss
+        metrics['backdoor_acc1'] = acc1
+        metrics['backdoor_acc5'] = acc5
+        
 
         return metrics

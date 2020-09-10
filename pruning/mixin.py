@@ -1,7 +1,7 @@
 """ Module with examples of common pruning patterns
 """
 from .abstract import Pruning
-from .utils import get_activations, get_param_gradients
+from .utils import get_activations, get_param_gradients_ULPs
 
 
 class ActivationMixin(Pruning):
@@ -30,7 +30,8 @@ class GradientMixin(Pruning):
     def update_gradients(self):
         assert self.inputs is not None and self.outputs is not None, \
             "Inputs and Outputs must be provided for gradients"
-        self._param_gradients = get_param_gradients(self.model, self.inputs, self.outputs)
+        # self._param_gradients = get_param_gradients(self.model, self.inputs, self.outputs)
+        self._param_gradients = get_param_gradients_ULPs(self.model, self.inputs, self.outputs, self.ULP_data)
 
     def param_gradients(self, only_prunable=True):
         if not hasattr(self, "_param_gradients"):
