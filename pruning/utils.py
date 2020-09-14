@@ -151,8 +151,14 @@ def get_param_gradients_ULPs(model, inputs, outputs, ULP_data, loss_func=None, b
     pred = model(inputs)
     W = ULP_data[1].cpu()
     b = ULP_data[2].cpu()
-    avgpool = torch.nn.AdaptiveAvgPool1d(200)
-    output = avgpool(pred.view(1,1,-1)).squeeze(0)
+
+    # HACK TO ACCOMMODATE ULP POOLING ANIRUDDHA
+    if model.__class__.__name__ == 'CNN_classifier':   #CIFAR10
+        output = pred.view(1,-1)
+    elif model.__class__.__name__ == 'ResNet':         #TInyImageNet
+        avgpool = torch.nn.AdaptiveAvgPool1d(200)
+        output = avgpool(pred.view(1,1,-1)).squeeze(0)
+    
     logit = torch.matmul(output, W) + b
     loss = logit[0, 1] - logit [0, 0]
     # loss = loss_func(pred, outputs)

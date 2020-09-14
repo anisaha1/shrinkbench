@@ -8,6 +8,7 @@ import glob
 from torch.utils.data import DataLoader
 
 os.environ['DATAPATH'] = '/nfs3/data/aniruddha:/nfs3/data/aniruddha/ULP/tiny_imagenet/Attacked_Data/Triggers_11_20'
+# os.environ['DATAPATH'] = '/nfs3/data/aniruddha:/nfs3/code/aniruddha/ULP/tiny_imagenet/Attacked_Data/Val/Triggers_11_20'
 os.environ['WEIGHTSPATH'] = '/nfs3/data/aniruddha/ULP/tiny_imagenet/poisoned_models/Triggers_11_20'
 
 # for strategy in ['GlobalMagGrad']:
@@ -67,7 +68,7 @@ for i in range(NUM_MODELS):
                             resume=poisoned_model_list[i],
                             strategy=strategy,
                             compression=c,
-                            train_kwargs={'epochs':1},
+                            train_kwargs={'epochs':10},
                             source=meta[i][1],
                             target=meta[i][2],
                             module_list=module_list,

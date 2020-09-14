@@ -1,5 +1,8 @@
 import pathlib
 import time
+import pickle
+import sys
+import json
 
 import torch
 import torchvision.models
@@ -42,6 +45,7 @@ class TrainingExperiment(Experiment):
                  save_freq=10,
                  source=None,
                  target=None,
+                 trigger=None,
                  poisoned_root=None
                  ):
 
@@ -53,13 +57,18 @@ class TrainingExperiment(Experiment):
         params = locals()
         params['dl_kwargs'] = dl_kwargs
         params['train_kwargs'] = train_kwargs
+
+        # HACK to not serialize array trigger ANIRUDDHA
+        del params['trigger']
+
         self.add_params(**params)
         # Save params
         self.source = source
         self.target = target
+        # self.trigger = trigger
         self.poisoned_root = poisoned_root
 
-        self.build_dataloader(dataset, **dl_kwargs)
+        self.build_dataloader(dataset, trigger, **dl_kwargs)
 
         self.build_model(model, pretrained, resume)
 
@@ -75,17 +84,40 @@ class TrainingExperiment(Experiment):
         self.build_logging(self.train_metrics, self.path)
         self.run_epochs()
 
-    def build_dataloader(self, dataset, **dl_kwargs):
-        constructor = getattr(datasets, dataset)
-        self.train_dataset = constructor(train=True)
-        self.val_dataset = constructor(train=False)
-        constructor = getattr(datasets, 'customFolder')
-        self.poisoned_dataset = constructor(train=False, dataset=self.poisoned_root, target=self.target)
-        self.backdoor_dataset = constructor(train=False, dataset=self.poisoned_root, target=self.source)
-        self.train_dl = DataLoader(self.train_dataset, shuffle=True, **dl_kwargs)
-        self.val_dl = DataLoader(self.val_dataset, shuffle=False, **dl_kwargs)
-        self.poisoned_dl = DataLoader(self.poisoned_dataset, shuffle=False, **dl_kwargs)
-        self.backdoor_dl = DataLoader(self.backdoor_dataset, shuffle=False, **dl_kwargs)
+    def build_dataloader(self, dataset, trigger=None, **dl_kwargs):
+        if dataset == 'TinyImageNet':
+            constructor = getattr(datasets, dataset)
+            self.train_dataset = constructor(train=True)
+            self.val_dataset = constructor(train=False)
+            constructor = getattr(datasets, 'customFolder')
+            self.poisoned_dataset = constructor(train=False, dataset=self.poisoned_root, target=self.target)
+            self.backdoor_dataset = constructor(train=False, dataset=self.poisoned_root, target=self.source)
+            self.train_dl = DataLoader(self.train_dataset, shuffle=True, **dl_kwargs)
+            self.val_dl = DataLoader(self.val_dataset, shuffle=False, **dl_kwargs)
+            self.poisoned_dl = DataLoader(self.poisoned_dataset, shuffle=False, **dl_kwargs)
+            self.backdoor_dl = DataLoader(self.backdoor_dataset, shuffle=False, **dl_kwargs)
+        elif dataset == 'CIFAR10_ULP':
+            # check dataset and dataloader
+            dataset = 'CIFAR10_ULP'
+            constructor = getattr(datasets, dataset)
+            train_dataset = constructor(train=True, dataset='/nfs1/code/aniruddha/poisoning_defense/Codes/GTSRB/Data/CIFAR10/')
+            val_dataset = constructor(train=False, dataset='/nfs1/code/aniruddha/poisoning_defense/Codes/GTSRB/Data/CIFAR10/')
+            self.train_dl = DataLoader(train_dataset, shuffle=True, **dl_kwargs)
+            self.val_dl = DataLoader(val_dataset, shuffle=False, **dl_kwargs)
+            dataset = 'custom_CIFAR10_Dataset'
+            constructor = getattr(datasets, dataset)
+            # generate clean and poisoned data
+            X_val, y_val = pickle.load(open('/nfs1/code/aniruddha/poisoning_defense/Codes/GTSRB/Data/CIFAR10/val_heq.p', 'rb'))
+            X_poisoned, y_poisoned, _, _ = datasets.generate_poisoned_data(X_val.copy(), y_val.copy(), self.source, self.target, trigger)
+            poisoned_dataset = constructor(X_poisoned, y_poisoned)
+
+            X_clean, y_clean, _ = datasets.generate_clean_data(X_val.copy(), y_val.copy(), self.source)
+            backdoor_dataset = constructor(X_clean, y_clean)
+            self.poisoned_dl = DataLoader(poisoned_dataset, shuffle=False, **dl_kwargs)
+            self.backdoor_dl = DataLoader(backdoor_dataset, shuffle=False, **dl_kwargs)
+        else:
+            print("Dataset not implemented for backdoor pruning.")
+            sys.exit()
 
     def build_model(self, model, pretrained=True, resume=None):
         if isinstance(model, str):
@@ -279,3 +311,11 @@ class TrainingExperiment(Experiment):
                 'ASR_loss', 'ASR_acc1', 'ASR_acc5', 
                 'backdoor_loss', 'backdoor_acc1', 'backdoor_acc5'
                 ]
+
+
+    def __repr__(self):
+        if not isinstance(self.params['model'], str) and isinstance(self.params['model'], torch.nn.Module):
+            self.params['model'] = self.params['model'].__module__
+
+        assert isinstance(self.params['model'], str), f"\nUnexpected model inputs: {self.params['model']}"
+        return json.dumps(self.params, indent=4)

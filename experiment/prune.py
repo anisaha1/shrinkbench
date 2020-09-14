@@ -8,7 +8,6 @@ from .. import strategies
 from ..metrics import model_size, flops
 from ..util import printc
 
-
 class PruningExperiment(TrainingExperiment):
 
     def __init__(self,
@@ -28,13 +27,14 @@ class PruningExperiment(TrainingExperiment):
                  module_list=[],
                  source=None,
                  target=None,
+                 trigger=None,
                  inputs=None,
                  outputs=None,
                  poisoned_root=None,
                  override_fraction=False,
                  ULP_data=None):
 
-        super(PruningExperiment, self).__init__(dataset, model, seed, path, dl_kwargs, train_kwargs, debug, pretrained, resume, resume_optim, save_freq, source, target, poisoned_root)
+        super(PruningExperiment, self).__init__(dataset, model, seed, path, dl_kwargs, train_kwargs, debug, pretrained, resume, resume_optim, save_freq, source, target, trigger, poisoned_root)
         self.add_params(strategy=strategy, compression=compression)
 
         self.apply_pruning(strategy, compression, module_list, override_fraction, ULP_data)

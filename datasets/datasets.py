@@ -3,7 +3,7 @@ import os
 
 from torchvision import transforms, datasets
 
-from . import places365, tiny_imagenet
+from . import places365, tiny_imagenet, cifar10_ULP
 
 _constructors = {
     'MNIST': datasets.MNIST,
@@ -12,7 +12,9 @@ _constructors = {
     'ImageNet': datasets.ImageNet,
     'Places365': places365.Places365,
     'TinyImageNet': tiny_imagenet.TinyImageNet,
-    'customFolder': tiny_imagenet.customFolder
+    'customFolder': tiny_imagenet.customFolder,
+    'CIFAR10_ULP': cifar10_ULP.CIFAR10_ULP,
+    'custom_CIFAR10_Dataset': cifar10_ULP.custom_CIFAR10_Dataset
 }
 
 
@@ -193,4 +195,25 @@ def customFolder(train=False, path=None, dataset='', target=None):
         preproc = [transforms.CenterCrop(56)]
     dataset = dataset_builder(dataset, train, normalize, preproc, path, target)
     dataset.shape = (3, 56, 56)
+    return dataset
+
+
+def CIFAR10_ULP(train=False, path=None, dataset=''):
+    """Thin wrapper around .datasets.cifar10_ULP.CIFAR10_ULP
+    """
+
+    if train:
+        mode = 'train'
+    else:
+        mode = 'val'
+    dataset = cifar10_ULP.CIFAR10_ULP(mode=mode, data_path=dataset)
+    dataset.shape = (3, 32, 32)
+    return dataset
+
+def custom_CIFAR10_Dataset(X=None, y=None):
+    """Thin wrapper around .datasets.cifar10_ULP.custom_CIFAR10_Dataset
+    """
+
+    dataset = cifar10_ULP.custom_CIFAR10_Dataset(X, y)
+    dataset.shape = (3, 32, 32)
     return dataset
