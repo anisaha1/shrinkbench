@@ -3,6 +3,7 @@ import time
 import pickle
 import sys
 import json
+import numpy as np
 
 import torch
 import torchvision.models
@@ -94,6 +95,7 @@ class TrainingExperiment(Experiment):
             self.backdoor_dataset = constructor(train=False, dataset=self.poisoned_root, target=self.source)
             self.train_dl = DataLoader(self.train_dataset, shuffle=True, **dl_kwargs)
             self.val_dl = DataLoader(self.val_dataset, shuffle=False, **dl_kwargs)
+            # This loads only source class images patched with trigger
             self.poisoned_dl = DataLoader(self.poisoned_dataset, shuffle=False, **dl_kwargs)
             self.backdoor_dl = DataLoader(self.backdoor_dataset, shuffle=False, **dl_kwargs)
         elif dataset == 'CIFAR10_ULP':
@@ -107,12 +109,39 @@ class TrainingExperiment(Experiment):
             dataset = 'custom_CIFAR10_Dataset'
             constructor = getattr(datasets, dataset)
             # generate clean and poisoned data
-            X_val, y_val = pickle.load(open('/nfs1/code/aniruddha/poisoning_defense/Codes/GTSRB/Data/CIFAR10/val_heq.p', 'rb'))
-            X_poisoned, y_poisoned, _, _ = datasets.generate_poisoned_data(X_val.copy(), y_val.copy(), self.source, self.target, trigger)
-            poisoned_dataset = constructor(X_poisoned, y_poisoned)
+            # # This loads only source class images patched with trigger
+            # X_val, y_val = pickle.load(open('/nfs1/code/aniruddha/poisoning_defense/Codes/GTSRB/Data/CIFAR10/val_heq.p', 'rb'))
+            # X_poisoned, y_poisoned, _, _ = datasets.generate_poisoned_data(X_val.copy(), y_val.copy(), self.source, self.target, trigger)
+            # poisoned_dataset = constructor(X_poisoned, y_poisoned)
 
-            X_clean, y_clean, _ = datasets.generate_clean_data(X_val.copy(), y_val.copy(), self.source)
-            backdoor_dataset = constructor(X_clean, y_clean)
+            # X_clean, y_clean, _ = datasets.generate_clean_data(X_val.copy(), y_val.copy(), self.source)
+            # backdoor_dataset = constructor(X_clean, y_clean)
+            # self.poisoned_dl = DataLoader(poisoned_dataset, shuffle=False, **dl_kwargs)
+            # self.backdoor_dl = DataLoader(backdoor_dataset, shuffle=False, **dl_kwargs)
+
+            # This loads all sources !=target class images patched with trigger
+            # This loads only source class images patched with trigger
+            X_stack = np.empty((0,32,32,3), np.uint8)
+            y_stack = np.empty((0,), np.uint8)
+
+            labels = np.arange(10)
+            source_labels = np.concatenate([labels[:self.target], labels[self.target+1:]])
+            X_val, y_val = pickle.load(open('/nfs1/code/aniruddha/poisoning_defense/Codes/GTSRB/Data/CIFAR10/val_heq.p', 'rb'))
+
+            for source in source_labels:
+                X_poisoned, y_poisoned, _, _ = datasets.generate_poisoned_data(X_val.copy(), y_val.copy(), source, self.target, trigger)
+                X_stack = np.append(X_stack, X_poisoned, axis=0)
+                y_stack = np.append(y_stack, y_poisoned, axis=0)
+            poisoned_dataset = constructor(X_stack, y_stack)
+
+            X_stack = np.empty((0,32,32,3), np.uint8)
+            y_stack = np.empty((0,), np.uint8)
+            for source in source_labels:
+                X_clean, y_clean, _ = datasets.generate_clean_data(X_val.copy(), y_val.copy(), source)
+                X_stack = np.append(X_stack, X_poisoned, axis=0)
+                y_stack = np.append(y_stack, y_poisoned, axis=0)
+            backdoor_dataset = constructor(X_stack, y_stack)
+                
             self.poisoned_dl = DataLoader(poisoned_dataset, shuffle=False, **dl_kwargs)
             self.backdoor_dl = DataLoader(backdoor_dataset, shuffle=False, **dl_kwargs)
         else:
